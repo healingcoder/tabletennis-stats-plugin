@@ -1,0 +1,151 @@
+/**
+ * 管理画面用CSS
+ */
+
+/* 基本スタイル */
+.tt-stats-dashboard {
+    max-width: 1200px;
+}
+
+/* カードスタイル */
+.tt-stats-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.tt-stats-card {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+    padding: 20px;
+    text-align: center;
+    transition: box-shadow 0.2s;
+}
+
+.tt-stats-card:hover {
+    box-shadow: 0 2px 4px rgba(0,0,0,.1);
+}
+
+.tt-stats-card h3 {
+    margin-top: 0;
+    font-size: 16px;
+    color: #666;
+    font-weight: 600;
+}
+
+.tt-stats-number {
+    font-size: 48px;
+    font-weight: bold;
+    color: #2271b1;
+    margin: 10px 0;
+    line-height: 1;
+}
+
+/* セクションスタイル */
+.tt-stats-recent,
+.tt-stats-quick-links,
+.tt-stats-info {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.tt-stats-recent h2,
+.tt-stats-quick-links h2,
+.tt-stats-info h2 {
+    margin-top: 0;
+    font-size: 18px;
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 10px;
+}
+
+/* クイックリンク */
+.tt-stats-quick-links ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.tt-stats-quick-links li {
+    margin: 0;
+}
+
+/* 情報セクション */
+.tt-stats-info ol,
+.tt-stats-info ul {
+    line-height: 1.8;
+}
+
+.tt-stats-info code {
+    background: #f0f0f1;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 13px;
+}
+
+.tt-stats-info h3 {
+    margin-top: 20px;
+    font-size: 16px;
+}
+
+/* フォームスタイル */
+.tt-stats-form-table {
+    width: 100%;
+    max-width: 800px;
+}
+
+.tt-stats-form-table th {
+    width: 200px;
+    text-align: left;
+    padding: 15px 10px;
+    vertical-align: top;
+    font-weight: 600;
+}
+
+.tt-stats-form-table td {
+    padding: 15px 10px;
+}
+
+.tt-stats-form-table input[type="text"],
+.tt-stats-form-table input[type="date"],
+.tt-stats-form-table select,
+.tt-stats-form-table textarea {
+    width: 100%;
+    max-width: 500px;
+}
+
+.tt-stats-form-table textarea {
+    height: 100px;
+}
+
+/* ボタンスタイル */
+.tt-stats-button-group {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid #e0e0e0;
+}
+
+/* レスポンシブ */
+@media (max-width: 768px) {
+    .tt-stats-cards {
+        grid-template-columns: 1fr;
+    }
+    
+    .tt-stats-quick-links ul {
+        flex-direction: column;
+    }
+    
+    .tt-stats-form-table th,
+    .tt-stats-form-table td {
+        display: block;
+        width: 100%;
+    }
+}
