@@ -52,6 +52,9 @@ class TableTennis_Stats {
     private function load_dependencies() {
         // データベース管理
         require_once TT_STATS_PLUGIN_DIR . 'includes/class-db-manager.php';
+
+        // インポートハンドラー
+        require_once TT_STATS_PLUGIN_DIR . 'includes/class-import-handler.php';
         
         // 管理画面
         if (is_admin()) {
@@ -61,6 +64,7 @@ class TableTennis_Stats {
         // フロントエンド
         require_once TT_STATS_PLUGIN_DIR . 'includes/class-frontend-manager.php';
         require_once TT_STATS_PLUGIN_DIR . 'includes/class-search-handler.php';
+        require_once TT_STATS_PLUGIN_DIR . 'includes/class-mobile-app.php';
     }
     
     /**
@@ -108,6 +112,11 @@ class TableTennis_Stats {
         
         // フロントエンドの初期化
         $frontend_manager = new TT_Stats_Frontend_Manager();
+
+        // インポートハンドラーの初期化
+        new TT_Stats_Import_Handler();
+
+        new TT_Stats_Mobile_App();
     }
 }
 
