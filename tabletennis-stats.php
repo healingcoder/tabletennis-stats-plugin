@@ -49,21 +49,27 @@ class TableTennis_Stats {
     /**
      * 依存ファイルの読み込み
      */
-    private function load_dependencies() {
-        // データベース管理
-        require_once TT_STATS_PLUGIN_DIR . 'includes/class-db-manager.php';
-
-        // インポートハンドラー
-        require_once TT_STATS_PLUGIN_DIR . 'includes/class-import-handler.php';
-        
-        // 管理画面
-        if (is_admin()) {
-            require_once TT_STATS_PLUGIN_DIR . 'includes/class-admin-manager.php';
-        }
-        
-        // スマホアプリ
-        require_once TT_STATS_PLUGIN_DIR . 'includes/class-mobile-app.php';
+private function load_dependencies() {
+    // データベース管理
+    require_once TT_STATS_PLUGIN_DIR . 'includes/class-db-manager.php';
+    
+    // インポートハンドラー
+    require_once TT_STATS_PLUGIN_DIR . 'includes/class-import-handler.php';
+    
+    // バックアップマネージャー
+    require_once TT_STATS_PLUGIN_DIR . 'includes/class-backup-manager.php';
+    
+    // スマホアプリ
+    require_once TT_STATS_PLUGIN_DIR . 'includes/class-mobile-app.php';
+    
+    // 管理画面
+    if (is_admin()) {
+        require_once TT_STATS_PLUGIN_DIR . 'includes/class-admin-manager.php';
     }
+    
+    // 検索ハンドラー
+    require_once TT_STATS_PLUGIN_DIR . 'includes/class-search-handler.php';
+}
     
     /**
      * WordPressフックの定義
@@ -107,14 +113,19 @@ class TableTennis_Stats {
         if (is_admin()) {
             $admin_manager = new TT_Stats_Admin_Manager();
         }
-
+               
         // インポートハンドラーの初期化
         new TT_Stats_Import_Handler();
-
+        
         // スマホアプリの初期化
         new TT_Stats_Mobile_App();
+        
+        // バックアップマネージャーの初期化
+        if (is_admin()) {
+            new TT_Stats_Backup_Manager();
+        }
     }
-}
+} // ← ★ この閉じ括弧が抜けていました！
 
 /**
  * プラグインを起動

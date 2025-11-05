@@ -82,6 +82,16 @@ class TT_Stats_Admin_Manager {
             'tt-stats-import',
             array($this, 'import_page')
         );
+
+        // バックアップ
+        add_submenu_page(
+            'tt-stats',
+            'バックアップ',
+            'バックアップ',
+            'manage_options',
+            'tt-stats-backup',
+            array($this, 'render_backup')
+        );
         
         // 設定
         add_submenu_page(
@@ -155,6 +165,12 @@ class TT_Stats_Admin_Manager {
         include TT_STATS_PLUGIN_DIR . 'admin/views/results.php';
     }
     
+    /**
+     * バックアップ画面を表示
+     */
+    public function render_backup() {
+        require_once TT_STATS_PLUGIN_DIR . 'admin/views/backup.php';
+    }
     /**
      * インポートページ
      */
