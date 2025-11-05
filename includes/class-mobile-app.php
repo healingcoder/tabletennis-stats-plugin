@@ -687,37 +687,108 @@ class TT_Stats_Mobile_App {
             return;
         }
         
-        // 試合履歴を取得
-        $match_history = $this->wpdb->get_results($this->wpdb->prepare(
-            "SELECT mp.*, m.match_name, m.match_date
-             FROM {$this->tables['match_participants']} mp
-             INNER JOIN {$this->tables['matches']} m ON mp.match_id = m.match_id
-             WHERE mp.player_id = %d
-             ORDER BY m.match_date DESC
-             LIMIT 20",
+        // 参考動画を取得
+        $videos = $this->wpdb->get_results($this->wpdb->prepare(
+            "SELECT * FROM {$this->tables['player_videos']}
+             WHERE player_id = %d
+             ORDER BY display_order ASC, video_id ASC",
             $player_id
         ));
         
-        // この選手の対戦結果を取得
-        $player_results = $this->wpdb->get_results($this->wpdb->prepare(
-            "SELECT r.*, m.match_name, m.match_date,
-                    p1.name as player1_name, p2.name as player2_name
-             FROM {$this->tables['match_results']} r
-             INNER JOIN {$this->tables['matches']} m ON r.match_id = m.match_id
-             INNER JOIN {$this->tables['players']} p1 ON r.player1_id = p1.player_id
-             INNER JOIN {$this->tables['players']} p2 ON r.player2_id = p2.player_id
-             WHERE r.player1_id = %d OR r.player2_id = %d
-             ORDER BY m.match_date DESC, r.result_id DESC
-             LIMIT 30",
+        // この選手が参加した試合と対戦結果を取得
+        $matches_with_results = $this->wpdb->get_results($this->wpdb->prepare(
+            "SELECT DISTINCT m.match_id, m.match_name, m.match_date, mp.final_rank
+             FROM {$this->tables['matches']} m
+             LEFT JOIN {$this->tables['match_participants']} mp 
+                ON m.match_id = mp.match_id AND mp.player_id = %d
+             INNER JOIN {$this->tables['match_results']} r 
+                ON m.match_id = r.match_id 
+                AND (r.player1_id = %d OR r.player2_id = %d)
+             ORDER BY m.match_date DESC
+             LIMIT 20",
+            $player_id,
             $player_id,
             $player_id
         ));
+        
+        // 各試合の対戦結果を取得してグループ化
+        $matches_data = array();
+        foreach ($matches_with_results as $match) {
+            $results = $this->wpdb->get_results($this->wpdb->prepare(
+                "SELECT r.*, p1.name as player1_name, p2.name as player2_name
+                 FROM {$this->tables['match_results']} r
+                 INNER JOIN {$this->tables['players']} p1 ON r.player1_id = p1.player_id
+                 INNER JOIN {$this->tables['players']} p2 ON r.player2_id = p2.player_id
+                 WHERE r.match_id = %d AND (r.player1_id = %d OR r.player2_id = %d)
+                 ORDER BY r.result_id",
+                $match->match_id,
+                $player_id,
+                $player_id
+            ));
+            
+            // ラウンド情報で並び替え
+            $round_priority = array(
+                '決勝' => 1,
+                '準決勝' => 2,
+                '3位決定戦' => 3,
+                '準々決勝' => 4,
+                'ベスト8' => 5,
+                'ベスト16' => 6,
+                'ベスト32' => 7,
+                '1回戦' => 8,
+                '2回戦' => 9,
+                '3回戦' => 10,
+                '予選' => 999,
+            );
+            
+            usort($results, function($a, $b) use ($round_priority) {
+                $priority_a = 500;
+                $priority_b = 500;
+                
+                if (!empty($a->round_info)) {
+                    $matched_length_a = 0;
+                    foreach ($round_priority as $key => $priority) {
+                        if (strpos($a->round_info, $key) !== false) {
+                            if (strlen($key) > $matched_length_a) {
+                                $priority_a = $priority;
+                                $matched_length_a = strlen($key);
+                            }
+                        }
+                    }
+                }
+                
+                if (!empty($b->round_info)) {
+                    $matched_length_b = 0;
+                    foreach ($round_priority as $key => $priority) {
+                        if (strpos($b->round_info, $key) !== false) {
+                            if (strlen($key) > $matched_length_b) {
+                                $priority_b = $priority;
+                                $matched_length_b = strlen($key);
+                            }
+                        }
+                    }
+                }
+                
+                return $priority_a - $priority_b;
+            });
+            
+            $matches_data[] = array(
+                'match' => $match,
+                'results' => $results
+            );
+        }
         
         $tactics_labels = array(
             'right_pen' => '右ペン',
             'left_pen' => '左ペン',
             'right_shake' => '右シェーク',
             'left_shake' => '左シェーク',
+            'other' => 'その他'
+        );
+        
+        $gender_labels = array(
+            'male' => '男性',
+            'female' => '女性',
             'other' => 'その他'
         );
         ?>
@@ -736,6 +807,13 @@ class TT_Stats_Mobile_App {
                     <?php endif; ?>
                     
                     <div class="profile-stats">
+                        <?php if ($player->gender): ?>
+                            <div class="stat-item">
+                                <div class="stat-value"><?php echo $player->gender == 'male' ? '👨' : ($player->gender == 'female' ? '👩' : '👤'); ?></div>
+                                <div class="stat-label"><?php echo $gender_labels[$player->gender] ?? $player->gender; ?></div>
+                            </div>
+                        <?php endif; ?>
+                        
                         <?php if ($player->prefecture): ?>
                             <div class="stat-item">
                                 <div class="stat-value">📍</div>
@@ -752,70 +830,173 @@ class TT_Stats_Mobile_App {
                     </div>
                 </div>
                 
-                <?php if ($player->profile_text): ?>
+                <?php if ($player->profile_text || $player->tactics_detail): ?>
                     <h2>📝 プロフィール</h2>
-                    <p style="line-height: 1.8; white-space: pre-wrap;"><?php echo esc_html($player->profile_text); ?></p>
+                    <?php if ($player->profile_text): ?>
+                        <p style="line-height: 1.8; white-space: pre-wrap; margin-bottom: 15px;"><?php echo esc_html($player->profile_text); ?></p>
+                    <?php endif; ?>
+                    
+                    <?php if ($player->tactics_detail): ?>
+                        <div style="background: #f8f9fa; padding: 12px; border-radius: 8px; margin-top: 10px;">
+                            <strong style="color: #ff6b35;">戦術詳細:</strong>
+                            <p style="margin: 8px 0 0 0; line-height: 1.6; white-space: pre-wrap;"><?php echo esc_html($player->tactics_detail); ?></p>
+                        </div>
+                    <?php endif; ?>
                 <?php endif; ?>
             </div>
             
-            <?php if ($player_results): ?>
+            <?php if ($videos): ?>
                 <div class="card">
-                    <h2>⚔️ 対戦結果</h2>
-                    <?php foreach ($player_results as $result): ?>
-                        <div class="vs-match">
-                            <div class="vs-player <?php echo $result->winner_id == $result->player1_id ? 'vs-winner' : 'vs-loser'; ?>">
-                                <a href="<?php echo home_url('/tt-app/player/' . $result->player1_id); ?>" style="text-decoration: none; color: inherit;">
-                                    <div class="vs-player-name"><?php echo esc_html($result->player1_name); ?></div>
-                                </a>
-                            </div>
-                            <div class="vs-score">
-                                <?php echo intval($result->player1_games); ?> - <?php echo intval($result->player2_games); ?>
-                            </div>
-                            <div class="vs-player <?php echo $result->winner_id == $result->player2_id ? 'vs-winner' : 'vs-loser'; ?>">
-                                <a href="<?php echo home_url('/tt-app/player/' . $result->player2_id); ?>" style="text-decoration: none; color: inherit;">
-                                    <div class="vs-player-name"><?php echo esc_html($result->player2_name); ?></div>
-                                </a>
-                            </div>
-                        </div>
-                        <?php if ($result->round_info || $result->match_name): ?>
-                            <div style="font-size: 12px; color: #999; text-align: center; margin-top: -10px; margin-bottom: 15px;">
-                                <?php echo esc_html($result->match_name); ?>
-                                <?php if ($result->round_info): ?>
-                                    - <?php echo esc_html($result->round_info); ?>
+                    <h2>🎥 参考動画</h2>
+                    <div id="video-list" style="display: none;">
+                        <?php foreach ($videos as $video): ?>
+                            <div style="margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #e0e0e0;">
+                                <?php if ($video->video_title): ?>
+                                    <h3 style="font-size: 16px; margin: 0 0 8px 0; color: #333;"><?php echo esc_html($video->video_title); ?></h3>
                                 <?php endif; ?>
+                                
+                                <?php if ($video->video_description): ?>
+                                    <p style="font-size: 14px; color: #666; margin: 0 0 10px 0; line-height: 1.6;"><?php echo esc_html($video->video_description); ?></p>
+                                <?php endif; ?>
+                                
+                                <?php 
+                                // YouTube URLの場合は埋め込み
+                                $video_url = $video->video_url;
+                                if (preg_match('/youtube\.com\/watch\?v=([^&]+)/', $video_url, $matches) || 
+                                    preg_match('/youtu\.be\/([^?]+)/', $video_url, $matches)) {
+                                    $video_id = $matches[1];
+                                    ?>
+                                    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 8px;">
+                                        <iframe src="https://www.youtube.com/embed/<?php echo esc_attr($video_id); ?>" 
+                                                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;" 
+                                                allowfullscreen>
+                                        </iframe>
+                                    </div>
+                                <?php } else { ?>
+                                    <a href="<?php echo esc_url($video_url); ?>" target="_blank" style="color: #ff6b35; text-decoration: none;">
+                                        🔗 動画を見る
+                                    </a>
+                                <?php } ?>
                             </div>
-                        <?php endif; ?>
-                    <?php endforeach; ?>
+                        <?php endforeach; ?>
+                    </div>
+                    
+                    <button id="toggle-videos" onclick="toggleVideos()" style="width: 100%; padding: 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                        参考動画を表示 (<?php echo count($videos); ?>件)
+                    </button>
+                    
+                    <script>
+                    function toggleVideos() {
+                        var videoList = document.getElementById('video-list');
+                        var btn = document.getElementById('toggle-videos');
+                        if (videoList.style.display === 'none') {
+                            videoList.style.display = 'block';
+                            btn.textContent = '参考動画を隠す';
+                            btn.style.background = '#999';
+                        } else {
+                            videoList.style.display = 'none';
+                            btn.textContent = '参考動画を表示 (<?php echo count($videos); ?>件)';
+                            btn.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                        }
+                    }
+                    </script>
                 </div>
             <?php endif; ?>
             
-            <?php if ($match_history): ?>
+            <?php if ($matches_data): ?>
                 <div class="card">
-                    <h2>🏆 試合結果</h2>
-                    <?php foreach ($match_history as $history): ?>
-                        <a href="<?php echo home_url('/tt-app/match/' . $history->match_id); ?>" class="list-item">
-                            <div class="list-item-title"><?php echo esc_html($history->match_name); ?></div>
-                            <div class="list-item-meta">
-                                <span>📅 <?php echo esc_html($history->match_date); ?></span>
-                                <?php if ($history->final_rank): ?>
-                                    <span class="badge <?php 
-                                        if ($history->final_rank == 1) echo 'badge-gold';
-                                        elseif ($history->final_rank == 2) echo 'badge-silver';
-                                        elseif ($history->final_rank >= 3 && $history->final_rank <= 4) echo 'badge-bronze';
-                                    ?>">
+                    <h2>🏆 試合別対戦結果</h2>
+                    <?php foreach ($matches_data as $index => $match_data): 
+                        $match = $match_data['match'];
+                        $results = $match_data['results'];
+                        $accordion_id = 'match-' . $match->match_id;
+                    ?>
+                        <div style="margin-bottom: 15px;">
+                            <!-- 試合名ヘッダー（クリック可能） -->
+                            <div onclick="toggleMatch('<?php echo $accordion_id; ?>')" 
+                                 style="background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%); color: white; padding: 12px 15px; border-radius: 8px; cursor: pointer; position: relative;">
+                                <div style="font-size: 16px; font-weight: 600; margin-bottom: 5px; padding-right: 30px;">
+                                    📋 <?php echo esc_html($match->match_name); ?>
+                                </div>
+                                <div style="font-size: 13px; opacity: 0.9;">
+                                    📅 <?php echo esc_html($match->match_date); ?>
+                                    <?php if ($match->final_rank): ?>
                                         <?php 
-                                        if ($history->final_rank == 1) echo '🏆 優勝';
-                                        elseif ($history->final_rank == 2) echo '🥈 準優勝';
-                                        elseif ($history->final_rank >= 3 && $history->final_rank <= 4) echo '🥉 ベスト4';
-                                        elseif ($history->final_rank >= 5 && $history->final_rank <= 8) echo 'ベスト8';
-                                        else echo $history->final_rank . '位';
+                                        $rank_text = '';
+                                        if ($match->final_rank == 1) $rank_text = '🏆 優勝';
+                                        elseif ($match->final_rank == 2) $rank_text = '🥈 準優勝';
+                                        elseif ($match->final_rank >= 3 && $match->final_rank <= 4) $rank_text = '🥉 ベスト4';
+                                        elseif ($match->final_rank >= 5 && $match->final_rank <= 8) $rank_text = 'ベスト8';
+                                        elseif ($match->final_rank >= 9 && $match->final_rank <= 16) $rank_text = 'ベスト16';
+                                        else $rank_text = $match->final_rank . '位';
                                         ?>
-                                    </span>
+                                        - <?php echo $rank_text; ?>
+                                    <?php endif; ?>
+                                </div>
+                                <!-- 開閉アイコン -->
+                                <div id="<?php echo $accordion_id; ?>-icon" style="position: absolute; top: 50%; right: 15px; transform: translateY(-50%); font-size: 20px; transition: transform 0.3s;">
+                                    ▼
+                                </div>
+                            </div>
+                            
+                            <!-- 対戦結果リスト（初期非表示） -->
+                            <div id="<?php echo $accordion_id; ?>" style="display: none; padding: 15px; background: #f8f9fa; border-radius: 0 0 8px 8px; margin-top: -8px;">
+                                <?php if ($results): ?>
+                                    <?php foreach ($results as $result): ?>
+                                        <!-- round_info表示 -->
+                                        <?php if ($result->round_info): ?>
+                                            <div style="background: white; color: #666; font-size: 12px; font-weight: 600; padding: 6px 10px; margin-bottom: 8px; border-radius: 4px; text-align: center;">
+                                                <?php echo esc_html($result->round_info); ?>
+                                            </div>
+                                        <?php endif; ?>
+                                        
+                                        <!-- 対戦カード -->
+                                        <div class="vs-match" style="margin-bottom: 12px;">
+                                            <div class="vs-player <?php echo $result->winner_id == $result->player1_id ? 'vs-winner' : 'vs-loser'; ?>">
+                                                <a href="<?php echo home_url('/tt-app/player/' . $result->player1_id); ?>" style="text-decoration: none; color: inherit;">
+                                                    <div class="vs-player-name"><?php echo esc_html($result->player1_name); ?></div>
+                                                </a>
+                                            </div>
+                                            <div class="vs-score">
+                                                <?php echo intval($result->player1_games); ?> - <?php echo intval($result->player2_games); ?>
+                                            </div>
+                                            <div class="vs-player <?php echo $result->winner_id == $result->player2_id ? 'vs-winner' : 'vs-loser'; ?>">
+                                                <a href="<?php echo home_url('/tt-app/player/' . $result->player2_id); ?>" style="text-decoration: none; color: inherit;">
+                                                    <div class="vs-player-name"><?php echo esc_html($result->player2_name); ?></div>
+                                                </a>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                    
+                                    <!-- 試合詳細へのリンク -->
+                                    <div style="text-align: center; margin-top: 15px;">
+                                        <a href="<?php echo home_url('/tt-app/match/' . $match->match_id); ?>" 
+                                           style="display: inline-block; padding: 8px 16px; background: white; color: #ff6b35; text-decoration: none; border-radius: 6px; font-size: 13px; font-weight: 600; border: 2px solid #ff6b35;">
+                                            試合詳細を見る →
+                                        </a>
+                                    </div>
+                                <?php else: ?>
+                                    <p style="text-align: center; color: #999; font-size: 14px; margin: 10px 0;">対戦結果がありません</p>
                                 <?php endif; ?>
                             </div>
-                        </a>
+                        </div>
                     <?php endforeach; ?>
                 </div>
+                
+                <script>
+                function toggleMatch(matchId) {
+                    var content = document.getElementById(matchId);
+                    var icon = document.getElementById(matchId + '-icon');
+                    
+                    if (content.style.display === 'none') {
+                        content.style.display = 'block';
+                        icon.style.transform = 'translateY(-50%) rotate(180deg)';
+                    } else {
+                        content.style.display = 'none';
+                        icon.style.transform = 'translateY(-50%) rotate(0deg)';
+                    }
+                }
+                </script>
             <?php endif; ?>
         </div>
         <?php
