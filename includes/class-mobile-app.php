@@ -845,6 +845,18 @@ class TT_Stats_Mobile_App {
             $match_id
         ));
         
+        // 順位付き選手（ベスト16まで）とその他の選手に分ける
+        $ranked_participants = array();
+        $other_participants = array();
+        
+        foreach ($participants as $participant) {
+            if ($participant->final_rank >= 1 && $participant->final_rank <= 16) {
+                $ranked_participants[] = $participant;
+            } else {
+                $other_participants[] = $participant;
+            }
+        }
+        
         // 対戦結果を取得
         $results = $this->wpdb->get_results($this->wpdb->prepare(
             "SELECT r.*, p1.name as player1_name, p2.name as player2_name
@@ -855,6 +867,60 @@ class TT_Stats_Mobile_App {
              ORDER BY r.result_date DESC",
             $match_id
         ));
+        
+        // ラウンド情報による優先度を定義して並び替え
+        // 注意：長いキーワードから順に並べる（「決勝トーナメント」と「決勝」の混同を防ぐため）
+        $round_priority = array(
+            '決勝トーナメント 決勝' => 1,
+            '決勝' => 1,
+            '準決勝' => 2,
+            '3位決定戦' => 3,
+            '準々決勝' => 4,
+            'ベスト8' => 5,
+            'ベスト16' => 6,
+            'ベスト32' => 7,
+            'ベスト64' => 8,
+            '1回戦' => 9,
+            '2回戦' => 10,
+            '3回戦' => 11,
+            '4回戦' => 12,
+            '5回戦' => 13,
+            '予選' => 999,  // 予選は最後
+        );
+        
+        usort($results, function($a, $b) use ($round_priority) {
+            $priority_a = 500;  // デフォルトは中間値
+            $priority_b = 500;
+            
+            // round_infoから優先度を取得（より長いマッチを優先）
+            if (!empty($a->round_info)) {
+                $matched_length_a = 0;
+                foreach ($round_priority as $key => $priority) {
+                    if (strpos($a->round_info, $key) !== false) {
+                        // より長いキーワードにマッチした場合のみ更新
+                        if (strlen($key) > $matched_length_a) {
+                            $priority_a = $priority;
+                            $matched_length_a = strlen($key);
+                        }
+                    }
+                }
+            }
+            
+            if (!empty($b->round_info)) {
+                $matched_length_b = 0;
+                foreach ($round_priority as $key => $priority) {
+                    if (strpos($b->round_info, $key) !== false) {
+                        // より長いキーワードにマッチした場合のみ更新
+                        if (strlen($key) > $matched_length_b) {
+                            $priority_b = $priority;
+                            $matched_length_b = strlen($key);
+                        }
+                    }
+                }
+            }
+            
+            return $priority_a - $priority_b;
+        });
         ?>
         <div class="app-container">
             <div class="card">
@@ -871,54 +937,148 @@ class TT_Stats_Mobile_App {
                 <?php endif; ?>
             </div>
             
-            <?php if ($participants): ?>
+            <?php if ($ranked_participants || $other_participants): ?>
                 <div class="card">
                     <h2>🏅 成績</h2>
-                    <?php foreach ($participants as $participant): ?>
-                        <a href="<?php echo home_url('/tt-app/player/' . $participant->player_id); ?>" class="list-item">
-                            <div class="list-item-title"><?php echo esc_html($participant->name); ?></div>
-                            <?php if ($participant->final_rank): ?>
-                                <div class="list-item-meta">
-                                    <span class="badge <?php 
-                                        if ($participant->final_rank == 1) echo 'badge-gold';
-                                        elseif ($participant->final_rank == 2) echo 'badge-silver';
-                                        elseif ($participant->final_rank >= 3 && $participant->final_rank <= 4) echo 'badge-bronze';
-                                    ?>">
-                                        <?php 
-                                        if ($participant->final_rank == 1) echo '🏆 優勝';
-                                        elseif ($participant->final_rank == 2) echo '🥈 準優勝';
-                                        elseif ($participant->final_rank >= 3 && $participant->final_rank <= 4) echo '🥉 ベスト4';
-                                        elseif ($participant->final_rank >= 5 && $participant->final_rank <= 8) echo 'ベスト8';
-                                        else echo $participant->final_rank . '位';
-                                        ?>
-                                    </span>
-                                </div>
-                            <?php endif; ?>
-                        </a>
-                    <?php endforeach; ?>
+                    
+                    <!-- ベスト16まで表示 -->
+                    <div id="ranked-participants">
+                        <?php foreach ($ranked_participants as $participant): ?>
+                            <a href="<?php echo home_url('/tt-app/player/' . $participant->player_id); ?>" class="list-item">
+                                <div class="list-item-title"><?php echo esc_html($participant->name); ?></div>
+                                <?php if ($participant->final_rank): ?>
+                                    <div class="list-item-meta">
+                                        <span class="badge <?php 
+                                            if ($participant->final_rank == 1) echo 'badge-gold';
+                                            elseif ($participant->final_rank == 2) echo 'badge-silver';
+                                            elseif ($participant->final_rank >= 3 && $participant->final_rank <= 4) echo 'badge-bronze';
+                                        ?>">
+                                            <?php 
+                                            if ($participant->final_rank == 1) echo '🏆 優勝';
+                                            elseif ($participant->final_rank == 2) echo '🥈 準優勝';
+                                            elseif ($participant->final_rank >= 3 && $participant->final_rank <= 4) echo '🥉 ベスト4';
+                                            elseif ($participant->final_rank >= 5 && $participant->final_rank <= 8) echo 'ベスト8';
+                                            elseif ($participant->final_rank >= 9 && $participant->final_rank <= 16) echo 'ベスト16';
+                                            ?>
+                                        </span>
+                                    </div>
+                                <?php endif; ?>
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+                    
+                    <!-- その他の選手（非表示） -->
+                    <?php if ($other_participants): ?>
+                        <div id="other-participants" style="display: none; border-top: 1px solid #e0e0e0; margin-top: 10px; padding-top: 10px;">
+                            <?php foreach ($other_participants as $participant): ?>
+                                <a href="<?php echo home_url('/tt-app/player/' . $participant->player_id); ?>" class="list-item">
+                                    <div class="list-item-title"><?php echo esc_html($participant->name); ?></div>
+                                    <div class="list-item-meta">
+                                        <span class="badge">
+                                            <?php 
+                                            if ($participant->final_rank == 99) echo '予選敗退';
+                                            elseif ($participant->final_rank) echo $participant->final_rank . '位';
+                                            else echo '出場';
+                                            ?>
+                                        </span>
+                                    </div>
+                                </a>
+                            <?php endforeach; ?>
+                        </div>
+                        
+                        <button id="toggle-participants" onclick="toggleParticipants()" style="width: 100%; padding: 12px; margin-top: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                            出場選手を表示 (<?php echo count($other_participants); ?>名)
+                        </button>
+                        
+                        <script>
+                        function toggleParticipants() {
+                            var otherList = document.getElementById('other-participants');
+                            var btn = document.getElementById('toggle-participants');
+                            if (otherList.style.display === 'none') {
+                                otherList.style.display = 'block';
+                                btn.textContent = '出場選手を隠す';
+                                btn.style.background = '#999';
+                            } else {
+                                otherList.style.display = 'none';
+                                btn.textContent = '出場選手を表示 (<?php echo count($other_participants); ?>名)';
+                                btn.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                            }
+                        }
+                        </script>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
             
-            <?php if ($results): ?>
+            <?php if ($results): 
+                $default_display_count = 10;
+                $total_results = count($results);
+            ?>
                 <div class="card">
                     <h2>⚔️ 対戦結果</h2>
-                    <?php foreach ($results as $result): ?>
-                        <div class="vs-match">
-                            <div class="vs-player <?php echo $result->winner_id == $result->player1_id ? 'vs-winner' : 'vs-loser'; ?>">
-                                <a href="<?php echo home_url('/tt-app/player/' . $result->player1_id); ?>" style="text-decoration: none; color: inherit;">
-                                    <div class="vs-player-name"><?php echo esc_html($result->player1_name); ?></div>
-                                </a>
+                    
+                    <div id="results-container">
+                        <?php 
+                        foreach ($results as $index => $result): 
+                            $is_hidden = ($index >= $default_display_count);
+                        ?>
+                            <div class="vs-match-wrapper <?php echo $is_hidden ? 'hidden-result' : ''; ?>" style="<?php echo $is_hidden ? 'display: none;' : ''; ?>">
+                                <?php if ($result->round_info): ?>
+                                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-size: 12px; font-weight: 600; padding: 6px 10px; margin-bottom: 8px; border-radius: 6px; text-align: center;">
+                                        <?php echo esc_html($result->round_info); ?>
+                                    </div>
+                                <?php endif; ?>
+                                
+                                <div class="vs-match">
+                                    <div class="vs-player <?php echo $result->winner_id == $result->player1_id ? 'vs-winner' : 'vs-loser'; ?>">
+                                        <a href="<?php echo home_url('/tt-app/player/' . $result->player1_id); ?>" style="text-decoration: none; color: inherit;">
+                                            <div class="vs-player-name"><?php echo esc_html($result->player1_name); ?></div>
+                                        </a>
+                                    </div>
+                                    <div class="vs-score">
+                                        <?php echo intval($result->player1_games); ?> - <?php echo intval($result->player2_games); ?>
+                                    </div>
+                                    <div class="vs-player <?php echo $result->winner_id == $result->player2_id ? 'vs-winner' : 'vs-loser'; ?>">
+                                        <a href="<?php echo home_url('/tt-app/player/' . $result->player2_id); ?>" style="text-decoration: none; color: inherit;">
+                                            <div class="vs-player-name"><?php echo esc_html($result->player2_name); ?></div>
+                                        </a>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="vs-score">
-                                <?php echo intval($result->player1_games); ?> - <?php echo intval($result->player2_games); ?>
-                            </div>
-                            <div class="vs-player <?php echo $result->winner_id == $result->player2_id ? 'vs-winner' : 'vs-loser'; ?>">
-                                <a href="<?php echo home_url('/tt-app/player/' . $result->player2_id); ?>" style="text-decoration: none; color: inherit;">
-                                    <div class="vs-player-name"><?php echo esc_html($result->player2_name); ?></div>
-                                </a>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
+                        <?php endforeach; ?>
+                    </div>
+                    
+                    <?php if ($total_results > $default_display_count): ?>
+                        <button id="toggle-results" onclick="toggleResults()" style="width: 100%; padding: 12px; margin-top: 15px; background: #ff6b35; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                            すべての試合を見る (残り<?php echo $total_results - $default_display_count; ?>試合)
+                        </button>
+                        
+                        <script>
+                        function toggleResults() {
+                            var hiddenResults = document.querySelectorAll('.hidden-result');
+                            var btn = document.getElementById('toggle-results');
+                            var isShowingAll = btn.getAttribute('data-showing-all') === 'true';
+                            
+                            if (!isShowingAll) {
+                                hiddenResults.forEach(function(result) {
+                                    result.style.display = 'block';
+                                });
+                                btn.textContent = '試合を折りたたむ';
+                                btn.setAttribute('data-showing-all', 'true');
+                                btn.style.background = '#999';
+                            } else {
+                                hiddenResults.forEach(function(result) {
+                                    result.style.display = 'none';
+                                });
+                                btn.textContent = 'すべての試合を見る (残り<?php echo $total_results - $default_display_count; ?>試合)';
+                                btn.setAttribute('data-showing-all', 'false');
+                                btn.style.background = '#ff6b35';
+                                
+                                // 対戦結果セクションまでスクロール
+                                document.getElementById('results-container').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                        }
+                        </script>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
         </div>
